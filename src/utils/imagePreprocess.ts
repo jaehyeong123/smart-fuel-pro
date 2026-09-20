@@ -1,11 +1,14 @@
 /**
- * Canvas-based Image Preprocessing for enhanced OCR recognition
- * Solves real-world photo problems: poor lighting, low contrast, glare on receipts & odometers.
+ * Enhanced Image Preprocessor for LCD/Digital Dashboard Clusters & Receipts
+ * Features:
+ * - Automatic background luminance detection & dark-cluster inverter (white text on black -> black text on white)
+ * - Contrast stretching & binarization optimized for digits
+ * - Preserves crystal-clear original resolution for fullscreen zoom modal
  */
 
 export interface PreprocessResult {
-  previewUrl: string;       // Clean thumbnail for UI display
-  ocrReadyBlob: Blob;       // High-contrast, binarized image optimized for Tesseract
+  previewUrl: string;       // High-resolution original photo for user zoom & preview
+  ocrReadyBlob: Blob;       // Processed high-contrast image for Tesseract
 }
 
 export async function preprocessImageForOcr(
@@ -15,11 +18,12 @@ export async function preprocessImageForOcr(
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
+      const originalDataUrl = e.target?.result as string;
       const img = new Image();
       img.onload = () => {
         try {
-          // 1. Calculate optimal dimensions (limit max 1600px for mobile performance)
-          const MAX_DIM = 1600;
+          // Limit max dimension to 1800px for speed and crispness
+          const MAX_DIM = 1800;
           let width = img.width;
           let height = img.height;
 
@@ -31,66 +35,76 @@ export async function preprocessImageForOcr(
             height = MAX_DIM;
           }
 
-          // 2. Prepare canvas
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('Canvas 2D context unavailable');
+          if (!ctx) throw new Error('Canvas context not available');
 
-          // Draw original scaled image
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Get image data
           const imageData = ctx.getImageData(0, 0, width, height);
           const data = imageData.data;
 
-          // 3. Pixel processing: Grayscale & Contrast Stretcher
-          // For receipts: higher contrast helps faint thermal ink.
-          // For odometers: LCD digit glow vs dark background.
-          const contrast = type === 'receipt' ? 1.4 : 1.6;
+          // 1. Calculate average luminance across sample pixels
+          let totalLuma = 0;
+          const step = 4 * 10; // Sample every 10th pixel for speed
+          let sampleCount = 0;
+          for (let i = 0; i < data.length; i += step) {
+            totalLuma += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            sampleCount++;
+          }
+          const avgLuma = sampleCount > 0 ? totalLuma / sampleCount : 128;
+
+          // If odometer and overall background is dark (< 125), invert so LCD digits become dark on white
+          const isDarkCluster = type === 'odometer' && avgLuma < 125;
+
+          const contrast = type === 'odometer' ? 1.8 : 1.5;
           const intercept = 128 * (1 - contrast);
 
           for (let i = 0; i < data.length; i += 4) {
-            // Luminance grayscale
-            const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-            
-            // Contrast adjustment
+            let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+
+            // Invert if dark cluster
+            if (isDarkCluster) {
+              gray = 255 - gray;
+            }
+
+            // Contrast boost
             let adjusted = gray * contrast + intercept;
             if (adjusted < 0) adjusted = 0;
             if (adjusted > 255) adjusted = 255;
 
-            // Subtle binarization for receipts (crisp text)
-            if (type === 'receipt') {
-              // Soft thresholding
+            // Sharp binarization for odometer numbers
+            if (type === 'odometer') {
+              adjusted = adjusted > 150 ? 255 : (adjusted < 90 ? 0 : adjusted);
+            } else {
               adjusted = adjusted > 140 ? 255 : (adjusted < 80 ? 0 : adjusted);
             }
 
-            data[i] = adjusted;     // R
-            data[i + 1] = adjusted; // G
-            data[i + 2] = adjusted; // B
-            // Alpha data[i + 3] remains untouched
+            data[i] = adjusted;
+            data[i + 1] = adjusted;
+            data[i + 2] = adjusted;
           }
 
           ctx.putImageData(imageData, 0, 0);
 
-          // Convert to blob
           canvas.toBlob((blob) => {
             if (!blob) {
-              reject(new Error('Failed to create image blob'));
+              reject(new Error('Failed to create blob'));
               return;
             }
             resolve({
-              previewUrl: e.target?.result as string, // Original image for user preview
+              previewUrl: originalDataUrl, // High-res original for enlargement!
               ocrReadyBlob: blob
             });
-          }, 'image/jpeg', 0.92);
+          }, 'image/jpeg', 0.9);
         } catch (err) {
           reject(err);
         }
       };
-      img.onerror = () => reject(new Error('Failed to load image file'));
-      img.src = e.target?.result as string;
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = originalDataUrl;
     };
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);

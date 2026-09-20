@@ -7,7 +7,8 @@ import {
   X,
   Fuel,
   Gauge,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ZoomIn
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 import { FuelRecord } from '../types';
@@ -52,6 +53,10 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
   const [receiptOcrLoading, setReceiptOcrLoading] = useState<boolean>(false);
   const [receiptOcrProgress, setReceiptOcrProgress] = useState<number>(0);
   const [receiptOcrNote, setReceiptOcrNote] = useState<string | null>(null);
+
+  // Photo zoom modal & candidates
+  const [enlargedPhoto, setEnlargedPhoto] = useState<{ url: string; title: string } | null>(null);
+  const [odoCandidates, setOdoCandidates] = useState<number[]>([]);
 
   // Field auto-detected badges
   const [autoFilledFields, setAutoFilledFields] = useState<Record<string, boolean>>({});
@@ -98,10 +103,11 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
 
       // 3. Parse cumulative mileage from recognized text
       const parsed = parseOdometerText(result.data.text);
+      setOdoCandidates(parsed.rawCandidates || []);
       if (parsed.odometer) {
         setOdometer(parsed.odometer.toString());
         setAutoFilledFields((prev) => ({ ...prev, odometer: true }));
-        setOdoOcrNote(`✅ 인식 성공: ${parsed.odometer.toLocaleString()} km`);
+        setOdoOcrNote(`✅ 인식 성공: ${parsed.odometer.toLocaleString()} km (다른 숫자는 아래 후보를 눌러주세요)`);
       } else {
         setOdoOcrNote(parsed.confidenceNote);
       }
@@ -279,8 +285,16 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
           </div>
 
           {odometerImg ? (
-            <div className="relative rounded-xl overflow-hidden aspect-[4/3] bg-slate-950">
+            <div
+              onClick={() => setEnlargedPhoto({ url: odometerImg, title: '계기판 원본 사진 확대' })}
+              className="relative rounded-xl overflow-hidden aspect-[4/3] bg-slate-950 cursor-pointer group"
+            >
               <img src={odometerImg} alt="계기판 미리보기" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-end justify-end p-1.5">
+                <span className="px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-medium flex items-center gap-1 shadow-sm">
+                  <ZoomIn className="w-3 h-3 text-emerald-400" /> 터치하여 확대
+                </span>
+              </div>
               {odoOcrLoading && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2">
                   <Loader2 className="w-6 h-6 animate-spin text-emerald-400 mb-1" />
@@ -334,6 +348,34 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
               {odoOcrNote}
             </div>
           )}
+
+          {/* Odometer Candidate Chips for 1-Touch Selection */}
+          {odoCandidates.length > 0 && (
+            <div className="mt-2 p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80">
+              <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold block mb-1">
+                💡 감지된 숫자 (터치 시 바로 반영):
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {odoCandidates.map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => {
+                      setOdometer(num.toString());
+                      setAutoFilledFields((prev) => ({ ...prev, odometer: true }));
+                    }}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-transform active:scale-95 border ${
+                      odometer === num.toString()
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {num.toLocaleString()} km
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Receipt Photo Card */}
@@ -358,8 +400,16 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
           </div>
 
           {receiptImg ? (
-            <div className="relative rounded-xl overflow-hidden aspect-[4/3] bg-slate-950">
+            <div
+              onClick={() => setEnlargedPhoto({ url: receiptImg, title: '영수증 원본 사진 확대' })}
+              className="relative rounded-xl overflow-hidden aspect-[4/3] bg-slate-950 cursor-pointer group"
+            >
               <img src={receiptImg} alt="영수증 미리보기" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-end justify-end p-1.5">
+                <span className="px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-medium flex items-center gap-1 shadow-sm">
+                  <ZoomIn className="w-3 h-3 text-blue-400" /> 터치하여 확대
+                </span>
+              </div>
               {receiptOcrLoading && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2">
                   <Loader2 className="w-6 h-6 animate-spin text-blue-400 mb-1" />
@@ -613,6 +663,40 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
         <CheckCircle2 className="w-5 h-5" />
         기록 저장 및 연비 계산
       </button>
+
+      {/* Enlarged Photo Modal (Touch to Zoom & Inspect) */}
+      {enlargedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
+          onClick={() => setEnlargedPhoto(null)}
+        >
+          <div
+            className="relative max-w-md w-full bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col max-h-[88vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-3 bg-slate-800/90 flex items-center justify-between text-white text-xs font-bold">
+              <span>{enlargedPhoto.title}</span>
+              <button
+                type="button"
+                onClick={() => setEnlargedPhoto(null)}
+                className="p-1 rounded-full hover:bg-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-2 flex-1 flex items-center justify-center bg-black overflow-auto">
+              <img
+                src={enlargedPhoto.url}
+                alt="확대 원본 사진"
+                className="max-w-full max-h-[75vh] object-contain rounded-xl select-none"
+              />
+            </div>
+            <div className="p-3 bg-slate-900/90 text-center text-[11px] text-slate-400">
+              원본 고화질 사진입니다. 손가락으로 확대하여 주행거리를 확인할 수 있습니다.
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 };

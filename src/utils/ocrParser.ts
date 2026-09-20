@@ -21,56 +21,82 @@ export interface ParsedReceipt {
  * Parses dashboard photo OCR text for Cumulative Odometer (km)
  */
 export function parseOdometerText(text: string): ParsedOdometer {
-  // Normalize
-  const cleaned = text.replace(/,/g, '');
+  if (!text) {
+    return { odometer: null, confidenceNote: '사진에서 텍스트를 감지하지 못했습니다.', rawCandidates: [] };
+  }
+
+  // 1. Pre-clean & repair common OCR font errors on LCD screens
+  let cleaned = text
+    .replace(/,/g, '')
+    // Replace O/o with 0 when adjacent to digits
+    .replace(/(\d)[oO]/g, '$10')
+    .replace(/[oO](\d)/g, '0$1')
+    // Replace l/I/| with 1 when adjacent to digits
+    .replace(/(\d)[lI|]/g, '$11')
+    .replace(/[lI|](\d)/g, '1$1')
+    // Replace S/s with 5 when adjacent to digits
+    .replace(/(\d)[sS]/g, '$15')
+    .replace(/[sS](\d)/g, '5$1');
+
+  // Collapse spaced numbers (e.g. "4 8 2 5 0" -> "48250")
+  cleaned = cleaned.replace(/(\b\d)\s+(\d)\s+(\d)\s+(\d(?:\s+\d)?\b)/g, (_m, a, b, c, d) => {
+    return `${a}${b}${c}${d.replace(/\s+/g, '')}`;
+  });
+
   const lines = cleaned.split('\n');
+  const prioritizedCandidates: number[] = [];
+  const otherCandidates: number[] = [];
 
-  const candidates: number[] = [];
-
-  // Pattern 1: explicit km or ODO indicator (e.g., "ODO 58420 km", "124500km", "68412 km")
-  const kmRegex = /(?:odo|누적|주행)?\s*([0-9]{3,7})\s*(?:km|k|킬로)?/gi;
+  // Pattern 1: numbers immediately preceding or following km, odo, or 누적/주행
+  const explicitRegex = /(?:odo|누적|주행거리|주행)?\s*([0-9]{3,7})\s*(?:km|k|킬로)?/gi;
   let match;
-  while ((match = kmRegex.exec(cleaned)) !== null) {
+  while ((match = explicitRegex.exec(cleaned)) !== null) {
     const val = parseInt(match[1], 10);
-    // Reasonable odometer range (1,000 km to 999,999 km)
     if (val >= 500 && val <= 999999) {
-      candidates.push(val);
+      if (!prioritizedCandidates.includes(val)) {
+        prioritizedCandidates.push(val);
+      }
     }
   }
 
-  // Pattern 2: line-by-line inspection
+  // Pattern 2: line-by-line inspection of any 4-6 digit standalone numbers
   for (const line of lines) {
     const trimmed = line.trim();
-    // Look for numbers of length 4 to 6 digits on the line
     const nums = trimmed.match(/\b\d{4,6}\b/g);
     if (nums) {
       for (const n of nums) {
         const val = parseInt(n, 10);
-        if (val >= 1000 && val <= 999999 && !candidates.includes(val)) {
-          candidates.push(val);
+        // Exclude current years (2024~2027) or common clock times (1200, 2400) if small
+        if (val >= 1000 && val <= 999999) {
+          if (!prioritizedCandidates.includes(val) && !otherCandidates.includes(val)) {
+            otherCandidates.push(val);
+          }
         }
       }
     }
   }
 
-  // Filter and pick: usually the largest integer on odometer display is the cumulative mileage
-  // (trip meters are usually smaller, clock is 1200 or 2400, temp is 0~40)
-  if (candidates.length === 0) {
+  // Merge candidates with priority first, then others
+  const allCandidates = [...prioritizedCandidates, ...otherCandidates];
+
+  if (allCandidates.length === 0) {
     return {
       odometer: null,
-      confidenceNote: '인식된 주행거리 숫자를 찾지 못했습니다. 직접 입력해주세요.',
+      confidenceNote: '주행거리 숫자를 찾지 못했습니다. 사진을 누르면 원본을 확대하여 확인 후 직접 입력하실 수 있습니다.',
       rawCandidates: []
     };
   }
 
-  // Sort descending
-  candidates.sort((a, b) => b - a);
-  const bestOdo = candidates[0];
+  // Best guess: if prioritized exists, take the largest of prioritized (usually odometer > trip)
+  prioritizedCandidates.sort((a, b) => b - a);
+  otherCandidates.sort((a, b) => b - a);
+
+  const bestOdo = prioritizedCandidates.length > 0 ? prioritizedCandidates[0] : otherCandidates[0];
 
   return {
     odometer: bestOdo,
-    confidenceNote: `주행거리 ${bestOdo.toLocaleString()} km가 감지되었습니다.`,
-    rawCandidates: candidates
+    confidenceNote: `주행거리 ${bestOdo.toLocaleString()} km 감지 완료`,
+    rawCandidates: allCandidates.slice(0, 5) // Return top 5 candidates for quick chips
   };
 }
 
