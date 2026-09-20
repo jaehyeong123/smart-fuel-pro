@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full bg-slate-50 dark:bg-slate-950">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>스마트 차계부 Pro - 연비 계산 & 주유 관리 PWA</title>
+    <meta name="description" content="모바일 최적화 스마트 차량 연비 계산 및 주유 기록 관리 PWA" />
+    
+    <!-- PWA & Mobile Web App Meta -->
+    <meta name="theme-color" content="#16a34a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="스마트연비Pro" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+
+    <!-- Pretendard Web Font for Crisp Mobile Typography -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  </head>
+  <body class="h-full font-sans antialiased text-slate-800 dark:text-slate-100 selection:bg-emerald-500 selection:text-white overscroll-none select-none">
+    <div id="root" class="h-full flex flex-col"></div>
+    <script type="module" src="./src/main.tsx"></script>
+    <script>
+      // Service Worker Registration for PWA Offline & Install Support
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(err => {
+            console.log('SW registration note:', err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

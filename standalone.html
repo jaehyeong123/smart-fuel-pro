@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full bg-slate-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>스마트 차계부 Pro - 연비 계산 & 주유 기록 PWA</title>
+
+  <!-- PWA & Mobile Web App Meta -->
+  <meta name="theme-color" content="#16a34a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: { 50: '#f0fdf4', 500: '#22c55e', 600: '#16a34a', 700: '#15803d' }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Tesseract.js v5 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Pretendard Web Font -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+  <style>
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    .pt-safe { padding-top: max(0.5rem, env(safe-area-inset-top)); }
+  </style>
+</head>
+<body class="h-full text-slate-800 antialiased select-none flex flex-col">
+
+  <!-- TOP APP HEADER -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 pt-safe">
+    <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
+          <i data-lucide="fuel" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <h1 class="text-base font-bold tracking-tight text-slate-900 leading-none">스마트 차계부</h1>
+            <span class="px-1.5 py-0.5 text-[10px] font-extrabold bg-emerald-100 text-emerald-800 rounded">PRO</span>
+          </div>
+          <span class="text-xs text-slate-500 font-medium" id="headerCarName">내 차 (아반떼)</span>
+        </div>
+      </div>
+      <button onclick="openInstallGuide()" class="px-2.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 shadow-xs active:scale-95">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span>앱 설치</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN SCROLL CONTAINER -->
+  <main class="flex-1 w-full max-w-md mx-auto px-4 pt-3 pb-24 overflow-y-auto">
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-sm p-3 rounded-2xl bg-slate-900/95 text-white text-xs font-semibold shadow-xl flex items-center justify-center text-center"></div>
+
+    <!-- VIEW 1: DASHBOARD -->
+    <section id="viewDashboard" class="space-y-4">
+      <!-- Hero Average Efficiency Card -->
+      <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white p-5 shadow-lg shadow-emerald-700/20">
+        <div class="flex items-center justify-between text-xs text-emerald-100 font-semibold">
+          <span class="flex items-center gap-1"><i data-lucide="sparkles" class="w-3.5 h-3.5"></i> 종합 평균 연비</span>
+          <span id="efficiencyBadge" class="px-2 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px]">-</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span id="statAvgEfficiency" class="text-4xl font-extrabold tracking-tight">--</span>
+          <span class="text-lg font-medium text-emerald-100">km/L</span>
+        </div>
+        <div class="mt-4 pt-3 border-t border-white/15 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <span class="text-emerald-200 block text-[11px]">1km 주행 비용</span>
+            <span id="statCostPerKm" class="font-bold text-white text-sm">-</span>
+          </div>
+          <div>
+            <span class="text-emerald-200 block text-[11px]">누적 분석 거리</span>
+            <span id="statTotalDistance" class="font-bold text-white text-sm">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secondary KPI Grid -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div class="flex items-center justify-between text-slate-500 text-xs mb-1">
+            <span class="font-medium">총 주유비 합계</span>
+            <i data-lucide="coins" class="w-4 h-4 text-amber-500"></i>
+          </div>
+          <div class="text-lg font-bold text-slate-900">
+            <span id="statTotalCost">0</span><span class="text-xs font-normal text-slate-500 ml-0.5">원</span>
+          </div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div class="flex items-center justify-between text-slate-500 text-xs mb-1">
+            <span class="font-medium">총 주유량</span>
+            <i data-lucide="fuel" class="w-4 h-4 text-blue-500"></i>
+          </div>
+          <div class="text-lg font-bold text-slate-900">
+            <span id="statTotalLiters">0</span><span class="text-xs font-normal text-slate-500 ml-0.5">L</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fuel Trend Chart -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-600"></i>
+            연비 변화 추이 (km/L)
+          </h2>
+          <span class="text-[11px] text-slate-400">최근 기록</span>
+        </div>
+        <div class="h-44 w-full relative">
+          <canvas id="efficiencyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Recent Logs Feed -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-slate-900">최근 주유 내역</h2>
+          <button onclick="switchTab('history')" class="text-xs text-emerald-600 font-medium hover:underline">
+            전체보기 &rarr;
+          </button>
+        </div>
+        <div id="recentLogsList" class="space-y-2"></div>
+        <button onclick="switchTab('input')" class="mt-3 w-full py-2.5 rounded-xl border-2 border-dashed border-emerald-500/40 text-emerald-600 text-xs font-bold flex items-center justify-center gap-1 hover:bg-emerald-50/50">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          신규 주유 기록 추가하기
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 2: INPUT FORM -->
+    <section id="viewInput" class="hidden space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">신규 주유 기록 등록</h2>
+          <p class="text-xs text-slate-500">사진 업로드 시 AI OCR이 숫자를 자동 추출합니다.</p>
+        </div>
+        <button onclick="switchTab('dashboard')" class="p-1 rounded-full text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Photo Upload Cards Grid -->
+      <div class="grid grid-cols-2 gap-3">
+        <!-- Odometer Card -->
+        <div class="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-800 flex items-center gap-1">
+              <i data-lucide="gauge" class="w-3.5 h-3.5 text-emerald-600"></i> 계기판 사진
+            </span>
+            <button id="btnOdoClear" onclick="clearOdoPhoto()" class="hidden text-[10px] text-rose-500">삭제</button>
+          </div>
+          <div id="odoBox" onclick="document.getElementById('fileOdo').click()" class="aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 hover:border-emerald-500 bg-slate-50 flex flex-col items-center justify-center gap-1 cursor-pointer overflow-hidden relative">
+            <i data-lucide="camera" class="w-6 h-6 text-slate-400"></i>
+            <span class="text-[11px] text-slate-500 font-medium">계기판 촬영/선택</span>
+            <img id="odoPreview" class="hidden w-full h-full object-cover absolute inset-0" />
+            <div id="odoSpinner" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white text-[11px] font-bold">
+              <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-emerald-400 mb-1"></i>
+              <span id="odoProgressText">OCR 분석 중...</span>
+            </div>
+          </div>
+          <input id="fileOdo" type="file" accept="image/*" capture="environment" class="hidden" onchange="handleOdoUpload(event)" />
+          <p id="odoNote" class="text-[10px] text-slate-500 mt-1.5 truncate"></p>
+        </div>
+
+        <!-- Receipt Card -->
+        <div class="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-800 flex items-center gap-1">
+              <i data-lucide="receipt" class="w-3.5 h-3.5 text-blue-600"></i> 영수증 사진
+            </span>
+            <button id="btnReceiptClear" onclick="clearReceiptPhoto()" class="hidden text-[10px] text-rose-500">삭제</button>
+          </div>
+          <div id="receiptBox" onclick="document.getElementById('fileReceipt').click()" class="aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-500 bg-slate-50 flex flex-col items-center justify-center gap-1 cursor-pointer overflow-hidden relative">
+            <i data-lucide="upload" class="w-6 h-6 text-slate-400"></i>
+            <span class="text-[11px] text-slate-500 font-medium">영수증 촬영/선택</span>
+            <img id="receiptPreview" class="hidden w-full h-full object-cover absolute inset-0" />
+            <div id="receiptSpinner" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white text-[11px] font-bold">
+              <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-blue-400 mb-1"></i>
+              <span id="receiptProgressText">OCR 분석 중...</span>
+            </div>
+          </div>
+          <input id="fileReceipt" type="file" accept="image/*" capture="environment" class="hidden" onchange="handleReceiptUpload(event)" />
+          <p id="receiptNote" class="text-[10px] text-slate-500 mt-1.5 truncate"></p>
+        </div>
+      </div>
+
+      <!-- Live Calculation Preview Card -->
+      <div id="liveCalcBox" class="hidden p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-emerald-900">
+        <div>
+          <span class="text-[11px] text-emerald-700 block font-medium">계산 예정 구간 연비</span>
+          <div class="flex items-baseline gap-1 mt-0.5">
+            <span id="previewEfficiencyNum" class="text-2xl font-black">--</span>
+            <span class="text-xs font-bold">km/L</span>
+          </div>
+        </div>
+        <div class="text-right text-xs">
+          <span class="text-slate-500 block text-[10px]">구간 거리</span>
+          <span id="previewTripDistance" class="font-bold text-emerald-800">+0 km</span>
+        </div>
+      </div>
+
+      <!-- Input Fields Form -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3.5">
+        <div>
+          <label class="flex justify-between text-xs font-bold text-slate-700 mb-1">
+            <span>누적 주행거리 (km) <span class="text-rose-500">*</span></span>
+            <span id="badgeOdoAuto" class="hidden text-[10px] text-emerald-600 font-normal">✨ 자동입력됨</span>
+          </label>
+          <div class="relative">
+            <input id="inputOdometer" type="number" inputmode="numeric" placeholder="예: 45000" class="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none" oninput="updateLivePreview()" />
+            <span class="absolute right-3.5 top-3 text-xs text-slate-400 font-medium">km</span>
+          </div>
+          <p id="lastOdoNotice" class="mt-1 text-[11px] text-slate-400"></p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="flex justify-between text-xs font-bold text-slate-700 mb-1">
+              <span>주유량 (L) <span class="text-rose-500">*</span></span>
+              <span id="badgeLitersAuto" class="hidden text-[10px] text-emerald-600">✨</span>
+            </label>
+            <div class="relative">
+              <input id="inputLiters" type="number" step="0.01" inputmode="decimal" placeholder="예: 42.5" class="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none" oninput="updateLivePreview()" />
+              <span class="absolute right-3.5 top-3 text-xs text-slate-400 font-medium">L</span>
+            </div>
+          </div>
+          <div>
+            <label class="flex justify-between text-xs font-bold text-slate-700 mb-1">
+              <span>결제금액 (원) <span class="text-rose-500">*</span></span>
+              <span id="badgeCostAuto" class="hidden text-[10px] text-emerald-600">✨</span>
+            </label>
+            <div class="relative">
+              <input id="inputTotalCost" type="number" inputmode="numeric" placeholder="예: 70000" class="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none" oninput="updateLivePreview()" />
+              <span class="absolute right-3.5 top-3 text-xs text-slate-400 font-medium">원</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 items-center pt-1">
+          <div>
+            <label class="block text-[11px] font-medium text-slate-500 mb-1">단가 (자동 계산)</label>
+            <div id="displayUnitPrice" class="h-10 px-3 rounded-xl bg-slate-100 flex items-center text-xs font-semibold text-slate-700">- 원/L</div>
+          </div>
+          <div>
+            <label class="block text-[11px] font-medium text-slate-500 mb-1">주유 방식</label>
+            <button id="btnFullTank" type="button" onclick="toggleFullTank()" class="w-full h-10 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 bg-emerald-50 border-emerald-300 text-emerald-700">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+              <span>가득 주유 (추천)</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">주유 일시</label>
+          <input id="inputDate" type="datetime-local" class="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">주유소명</label>
+          <input id="inputGasStation" type="text" placeholder="예: GS칼텍스 대동주유소" class="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">메모 (선택)</label>
+          <input id="inputMemo" type="text" placeholder="예: 출퇴근 운행, 공기압 점검" class="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+      </div>
+
+      <button onclick="saveRecord()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 active:scale-[0.98] text-white font-bold text-base shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2">
+        <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+        기록 저장 및 연비 계산
+      </button>
+    </section>
+
+    <!-- VIEW 3: HISTORY -->
+    <section id="viewHistory" class="hidden space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">주유 기록 히스토리</h2>
+          <p class="text-xs text-slate-500" id="historyCount">총 0회의 기록</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="exportCsv()" title="CSV 다운로드" class="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-emerald-600 shadow-xs">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+          </button>
+          <button onclick="exportJson()" title="JSON 백업" class="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 shadow-xs">
+            <i data-lucide="file-down" class="w-4 h-4"></i>
+          </button>
+          <label title="JSON 복구" class="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-purple-600 shadow-xs cursor-pointer">
+            <i data-lucide="upload" class="w-4 h-4"></i>
+            <input type="file" accept=".json" onchange="importJson(event)" class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <div id="historyList" class="space-y-3"></div>
+
+      <div class="pt-4 text-center">
+        <button onclick="resetSampleData()" class="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl">
+          샘플 데이터 다시 불러오기
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- BOTTOM NAVIGATION BAR -->
+  <nav class="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-lg border-t border-slate-200 pb-safe">
+    <div class="max-w-md mx-auto px-6 h-16 flex items-center justify-around">
+      <button onclick="switchTab('dashboard')" id="navDashboard" class="flex flex-col items-center justify-center flex-1 py-1 text-emerald-600 font-bold">
+        <i data-lucide="layout-dashboard" class="w-5 h-5 mb-1"></i>
+        <span class="text-[11px]">대시보드</span>
+      </button>
+      <div class="flex-1 flex justify-center -mt-5">
+        <button onclick="switchTab('input')" class="w-13 h-13 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 active:scale-95" style="width:3.25rem; height:3.25rem;">
+          <i data-lucide="plus" class="w-6 h-6 stroke-[2.6]"></i>
+        </button>
+      </div>
+      <button onclick="switchTab('history')" id="navHistory" class="flex flex-col items-center justify-center flex-1 py-1 text-slate-400">
+        <i data-lucide="history" class="w-5 h-5 mb-1"></i>
+        <span class="text-[11px]">기록 목록</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- MODAL: IMAGE PREVIEW -->
+  <div id="photoModal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onclick="closePhotoModal()">
+    <div class="relative max-w-sm w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl" onclick="event.stopPropagation()">
+      <div class="p-3 bg-slate-800 flex items-center justify-between text-white text-xs font-bold">
+        <span id="photoModalTitle">사진 미리보기</span>
+        <button onclick="closePhotoModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="p-2 flex items-center justify-center bg-black max-h-[70vh]">
+        <img id="photoModalImg" class="max-w-full max-h-[65vh] object-contain rounded" />
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PWA INSTALL GUIDE -->
+  <div id="installModal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="closeInstallGuide()">
+    <div class="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-4" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b pb-3">
+        <h3 class="font-bold text-sm text-slate-900">스마트폰 어플로 바로 사용하기</h3>
+        <button onclick="closeInstallGuide()"><i data-lucide="x" class="w-5 h-5 text-slate-400"></i></button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col items-center text-center">
+          <span class="font-bold text-slate-800 mb-1">📷 스마트폰 기본 카메라로 QR 스캔</span>
+          <p class="text-[11px] text-slate-500 mb-2">스마트폰 카메라로 아래 QR을 비추면 바로 열립니다.</p>
+          <div class="p-2 bg-white rounded-xl shadow-xs border border-slate-200">
+            <img src="/mobile-qr.png" alt="스마트폰 접속 QR코드" class="w-32 h-32 object-contain" />
+          </div>
+          <div class="mt-2 text-[11px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg">
+            http://192.168.5.21:5173/
+          </div>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="font-bold text-slate-800 mb-1">🍎 iPhone (Safari)</div>
+          <p class="text-slate-600 text-[11px]">브라우저 하단 <strong>공유(아이콘)</strong> &gt; <strong>'홈 화면에 추가'</strong>를 누르면 앱스토어 앱처럼 전체화면으로 실행됩니다.</p>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="font-bold text-slate-800 mb-1">🤖 Android (Chrome / 삼성인터넷)</div>
+          <p class="text-slate-600 text-[11px]">우측 상단 <strong>메뉴(⋮)</strong> &gt; <strong>'홈 화면에 추가'</strong> 또는 <strong>'앱 설치'</strong>를 선택하세요.</p>
+        </div>
+      </div>
+      <button onclick="closeInstallGuide()" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs">확인</button>
+    </div>
+  </div>
+
+  <!-- APPLICATION JAVASCRIPT -->
+  <script>
+    // LocalStorage Keys
+    const KEY_RECORDS = 'smart_fuel_pro_records_v1';
+    let records = [];
+    let isFullTank = true;
+    let odoImgBase64 = null;
+    let receiptImgBase64 = null;
+    let chartInstance = null;
+
+    // Sample Data
+    const sampleData = [
+      { id: '1', date: '2025-01-05T09:30', odometer: 45200, liters: 42.5, totalCost: 70125, unitPrice: 1650, isFullTank: true, gasStation: 'GS칼텍스 대동주유소', memo: '새해 첫 기준 주유' },
+      { id: '2', date: '2025-01-18T18:40', odometer: 45830, liters: 44.0, totalCost: 72600, unitPrice: 1650, isFullTank: true, gasStation: 'SK에너지 서초셀프', memo: '출퇴근 주행' },
+      { id: '3', date: '2025-02-02T14:15', odometer: 46490, liters: 43.2, totalCost: 72144, unitPrice: 1670, isFullTank: true, gasStation: 'S-OIL 강남셀프', memo: '설 명절 고속도로 주행' },
+      { id: '4', date: '2025-02-19T20:10', odometer: 47110, liters: 45.0, totalCost: 76050, unitPrice: 1690, isFullTank: true, gasStation: 'HD현대 판교주유소', memo: '도심 주행' },
+      { id: '5', date: '2025-03-08T11:20', odometer: 47790, liters: 44.5, totalCost: 75205, unitPrice: 1690, isFullTank: true, gasStation: '알뜰 분당행복주유소', memo: '주말 근교 드라이브' }
+    ];
+
+    // Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      loadRecords();
+      initDefaultDate();
+      renderApp();
+    });
+
+    function initDefaultDate() {
+      const now = new Date();
+      const offset = now.getTimezoneOffset() * 60000;
+      document.getElementById('inputDate').value = new Date(now.getTime() - offset).toISOString().slice(0, 16);
+    }
+
+    function loadRecords() {
+      const raw = localStorage.getItem(KEY_RECORDS);
+      if (!raw) {
+        records = recalculateChain(sampleData);
+        saveRecords();
+      } else {
+        try {
+          records = recalculateChain(JSON.parse(raw));
+        } catch {
+          records = [];
+        }
+      }
+    }
+
+    function saveRecords() {
+      localStorage.setItem(KEY_RECORDS, JSON.stringify(records));
+    }
+
+    // Recalculates tripDistance and fuelEfficiency across the entire chain
+    function recalculateChain(data) {
+      if (!data || data.length === 0) return [];
+      const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date) || a.odometer - b.odometer);
+      return sorted.map((item, idx) => {
+        if (idx === 0) {
+          return { ...item, tripDistance: 0, fuelEfficiency: null, costPerKm: null };
+        }
+        const prev = sorted[idx - 1];
+        const tripDistance = Math.max(0, item.odometer - prev.odometer);
+        let fuelEfficiency = null;
+        let costPerKm = null;
+        if (tripDistance > 0 && item.liters > 0) {
+          fuelEfficiency = Number((tripDistance / item.liters).toFixed(2));
+          costPerKm = Number((item.totalCost / tripDistance).toFixed(1));
+        }
+        return { ...item, tripDistance, fuelEfficiency, costPerKm };
+      });
+    }
+
+    function renderApp() {
+      renderDashboard();
+      renderHistory();
+      lucide.createIcons();
+    }
+
+    function renderDashboard() {
+      const validTrips = records.filter(r => r.fuelEfficiency !== null);
+      const totalTripDist = validTrips.reduce((sum, r) => sum + r.tripDistance, 0);
+      const totalTripLiters = validTrips.reduce((sum, r) => sum + r.liters, 0);
+      const totalCost = records.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+      const totalLiters = records.reduce((sum, r) => sum + (r.liters || 0), 0);
+
+      const avgEfficiency = totalTripDist > 0 && totalTripLiters > 0 ? (totalTripDist / totalTripLiters).toFixed(2) : '--';
+      const avgCostPerKm = totalTripDist > 0 ? Math.round(validTrips.reduce((s, r) => s + r.totalCost, 0) / totalTripDist) : '-';
+
+      document.getElementById('statAvgEfficiency').innerText = avgEfficiency;
+      document.getElementById('statCostPerKm').innerText = avgCostPerKm !== '-' ? `${avgCostPerKm.toLocaleString()}원` : '-';
+      document.getElementById('statTotalDistance').innerText = totalTripDist > 0 ? `${totalTripDist.toLocaleString()} km` : '-';
+      document.getElementById('statTotalCost').innerText = totalCost.toLocaleString();
+      document.getElementById('statTotalLiters').innerText = totalLiters.toFixed(1);
+
+      if (validTrips.length > 0) {
+        const latest = validTrips[validTrips.length - 1];
+        document.getElementById('efficiencyBadge').innerText = `최근 ${latest.fuelEfficiency} km/L`;
+      } else {
+        document.getElementById('efficiencyBadge').innerText = '기준 등록 완료';
+      }
+
+      // Render Chart
+      renderChart(validTrips.slice(-8));
+
+      // Render Recent Logs Feed (last 3)
+      const recentList = document.getElementById('recentLogsList');
+      const recents = [...records].reverse().slice(0, 3);
+      if (recents.length === 0) {
+        recentList.innerHTML = '<div class="py-4 text-center text-slate-400 text-xs">주유 기록이 없습니다.</div>';
+      } else {
+        recentList.innerHTML = recents.map(r => `
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+            <div>
+              <div class="text-xs font-bold text-slate-900">${r.gasStation || '주유소'} <span class="text-[10px] text-slate-400 font-normal">${r.date.slice(5, 10)}</span></div>
+              <div class="text-[11px] text-slate-500 mt-0.5">${r.odometer.toLocaleString()} km · ${r.liters}L · ${r.totalCost.toLocaleString()}원</div>
+            </div>
+            <div class="text-right">
+              ${r.fuelEfficiency !== null ? `
+                <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800">${r.fuelEfficiency.toFixed(2)} km/L</span>
+                <div class="text-[10px] text-slate-400 mt-0.5">+${r.tripDistance} km</div>
+              ` : '<span class="text-[10px] text-slate-400 bg-slate-200 px-2 py-0.5 rounded">기준 등록</span>'}
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function renderChart(chartTrips) {
+      const ctx = document.getElementById('efficiencyChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      const labels = chartTrips.map(r => r.date.slice(5, 10));
+      const data = chartTrips.map(r => r.fuelEfficiency);
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels.length > 0 ? labels : ['기록 없음'],
+          datasets: [{
+            label: '구간 연비',
+            data: data.length > 0 ? data : [0],
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: '#10b981',
+            pointRadius: 4.5
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+            y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+    }
+
+    function renderHistory() {
+      const list = document.getElementById('historyList');
+      const countEl = document.getElementById('historyCount');
+      countEl.innerText = `총 ${records.length}회의 기록`;
+
+      const reversed = [...records].reverse();
+      if (reversed.length === 0) {
+        list.innerHTML = '<div class="py-12 text-center text-slate-400 text-xs">등록된 주유 기록이 없습니다.</div>';
+        return;
+      }
+
+      list.innerHTML = reversed.map(r => `
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="font-bold text-sm text-slate-900">${r.gasStation || '주유소'}</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">${r.date.replace('T', ' ')} ${r.memo ? '· ' + r.memo : ''}</div>
+            </div>
+            <div>
+              ${r.fuelEfficiency !== null ? `
+                <div class="text-right">
+                  <span class="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800">${r.fuelEfficiency.toFixed(2)} km/L</span>
+                  <div class="text-[10px] text-emerald-600 font-bold mt-0.5">+${r.tripDistance} km</div>
+                </div>
+              ` : '<span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-lg">최초 기준</span>'}
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-2 py-2 px-3 rounded-xl bg-slate-50 text-xs">
+            <div><span class="text-[10px] text-slate-400 block">누적거리</span><span class="font-bold">${r.odometer.toLocaleString()} km</span></div>
+            <div><span class="text-[10px] text-slate-400 block">주유량</span><span class="font-bold">${r.liters} L</span></div>
+            <div class="text-right"><span class="text-[10px] text-slate-400 block">결제금액</span><span class="font-bold text-emerald-600">${r.totalCost.toLocaleString()}원</span></div>
+          </div>
+          <div class="flex items-center justify-between pt-1">
+            <div class="flex gap-1.5">
+              ${r.odometerImage ? `<button onclick="viewPhoto('${r.odometerImage}', '계기판 사진')" class="text-[11px] bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg text-slate-600">계기판</button>` : ''}
+              ${r.receiptImage ? `<button onclick="viewPhoto('${r.receiptImage}', '영수증 사진')" class="text-[11px] bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg text-slate-600">영수증</button>` : ''}
+            </div>
+            <button onclick="deleteRecord('${r.id}')" class="text-slate-400 hover:text-rose-500 p-1 text-xs">삭제</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Tab Navigation
+    function switchTab(tab) {
+      if ('vibrate' in navigator) { try { navigator.vibrate(15); } catch {} }
+      document.getElementById('viewDashboard').classList.toggle('hidden', tab !== 'dashboard');
+      document.getElementById('viewInput').classList.toggle('hidden', tab !== 'input');
+      document.getElementById('viewHistory').classList.toggle('hidden', tab !== 'history');
+
+      document.getElementById('navDashboard').className = tab === 'dashboard' ? 'flex flex-col items-center justify-center flex-1 py-1 text-emerald-600 font-bold' : 'flex flex-col items-center justify-center flex-1 py-1 text-slate-400';
+      document.getElementById('navHistory').className = tab === 'history' ? 'flex flex-col items-center justify-center flex-1 py-1 text-emerald-600 font-bold' : 'flex flex-col items-center justify-center flex-1 py-1 text-slate-400';
+
+      if (tab === 'input') {
+        const last = records.length > 0 ? records[records.length - 1] : null;
+        document.getElementById('lastOdoNotice').innerText = last ? `직전 등록 주행거리: ${last.odometer.toLocaleString()} km` : '첫 주유 기록입니다.';
+        updateLivePreview();
+      }
+      lucide.createIcons();
+    }
+
+    function toggleFullTank() {
+      isFullTank = !isFullTank;
+      const btn = document.getElementById('btnFullTank');
+      btn.className = isFullTank ? 'w-full h-10 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 bg-emerald-50 border-emerald-300 text-emerald-700' : 'w-full h-10 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-100 border-slate-200 text-slate-600';
+      btn.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> <span>${isFullTank ? '가득 주유 (추천)' : '부분 주유'}</span>`;
+      lucide.createIcons();
+    }
+
+    // Live Calculation Update in Form
+    function updateLivePreview() {
+      const odo = parseFloat(document.getElementById('inputOdometer').value);
+      const vol = parseFloat(document.getElementById('inputLiters').value);
+      const cost = parseFloat(document.getElementById('inputTotalCost').value);
+
+      if (!isNaN(vol) && vol > 0 && !isNaN(cost) && cost > 0) {
+        document.getElementById('displayUnitPrice').innerText = `${Math.round(cost / vol).toLocaleString()} 원/L`;
+      } else {
+        document.getElementById('displayUnitPrice').innerText = '- 원/L';
+      }
+
+      const last = records.length > 0 ? records[records.length - 1] : null;
+      const box = document.getElementById('liveCalcBox');
+      if (last && !isNaN(odo) && odo > last.odometer && !isNaN(vol) && vol > 0) {
+        const trip = Math.round(odo - last.odometer);
+        const eff = (trip / vol).toFixed(2);
+        document.getElementById('previewEfficiencyNum').innerText = eff;
+        document.getElementById('previewTripDistance').innerText = `+${trip.toLocaleString()} km`;
+        box.classList.remove('hidden');
+      } else {
+        box.classList.add('hidden');
+      }
+    }
+
+    // Canvas Image Preprocessing for Clean OCR
+    function preprocessCanvas(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX = 1400;
+            let w = img.width, h = img.height;
+            if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+            else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+
+            // Grayscale & Contrast
+            const imgData = ctx.getImageData(0, 0, w, h);
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+              const gray = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+              const contrast = 1.5;
+              let adj = gray * contrast + (128 * (1 - contrast));
+              adj = adj > 255 ? 255 : (adj < 0 ? 0 : adj);
+              d[i] = d[i+1] = d[i+2] = adj;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            resolve({ previewUrl: e.target.result, blobUrl: canvas.toDataURL('image/jpeg', 0.85) });
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Odometer OCR Handler
+    async function handleOdoUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const { previewUrl, blobUrl } = await preprocessCanvas(file);
+      odoImgBase64 = previewUrl;
+      document.getElementById('odoPreview').src = previewUrl;
+      document.getElementById('odoPreview').classList.remove('hidden');
+      document.getElementById('btnOdoClear').classList.remove('hidden');
+      document.getElementById('odoSpinner').classList.remove('hidden');
+
+      try {
+        const worker = await Tesseract.createWorker('kor+eng');
+        const ret = await worker.recognize(blobUrl);
+        await worker.terminate();
+
+        const text = ret.data.text.replace(/,/g, '');
+        const nums = text.match(/\b\d{4,6}\b/g);
+        if (nums && nums.length > 0) {
+          const sortedNums = nums.map(n => parseInt(n, 10)).filter(n => n >= 500 && n <= 999999).sort((a, b) => b - a);
+          if (sortedNums.length > 0) {
+            document.getElementById('inputOdometer').value = sortedNums[0];
+            document.getElementById('badgeOdoAuto').classList.remove('hidden');
+            document.getElementById('odoNote').innerText = `✅ 인식 성공: ${sortedNums[0].toLocaleString()} km`;
+            updateLivePreview();
+          }
+        } else {
+          document.getElementById('odoNote').innerText = '숫자를 찾지 못했습니다. 직접 입력해주세요.';
+        }
+      } catch (err) {
+        document.getElementById('odoNote').innerText = 'OCR 인식 오류. 직접 입력해주세요.';
+      } finally {
+        document.getElementById('odoSpinner').classList.add('hidden');
+      }
+    }
+
+    // Receipt OCR Handler
+    async function handleReceiptUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const { previewUrl, blobUrl } = await preprocessCanvas(file);
+      receiptImgBase64 = previewUrl;
+      document.getElementById('receiptPreview').src = previewUrl;
+      document.getElementById('receiptPreview').classList.remove('hidden');
+      document.getElementById('btnReceiptClear').classList.remove('hidden');
+      document.getElementById('receiptSpinner').classList.remove('hidden');
+
+      try {
+        const worker = await Tesseract.createWorker('kor+eng');
+        const ret = await worker.recognize(blobUrl);
+        await worker.terminate();
+
+        const text = ret.data.text;
+        // Parse Liters
+        const volMatch = text.replace(/,/g, '').match(/(\d{1,3}\.\d{1,3})\s*(?:L|l|리터|주유량|수량)?/);
+        if (volMatch) {
+          const l = parseFloat(volMatch[1]);
+          if (l >= 5 && l <= 150) {
+            document.getElementById('inputLiters').value = l;
+            document.getElementById('badgeLitersAuto').classList.remove('hidden');
+          }
+        }
+        // Parse Total Cost
+        const costMatch = text.replace(/,/g, '').match(/(\d{4,7})\s*(?:원|결제|합계|승인)/);
+        if (costMatch) {
+          const c = parseInt(costMatch[1], 10);
+          if (c >= 10000 && c <= 300000) {
+            document.getElementById('inputTotalCost').value = c;
+            document.getElementById('badgeCostAuto').classList.remove('hidden');
+          }
+        }
+        // Station detection
+        if (text.includes('GS')) document.getElementById('inputGasStation').value = 'GS칼텍스';
+        else if (text.includes('SK')) document.getElementById('inputGasStation').value = 'SK에너지';
+        else if (text.includes('S-OIL') || text.includes('에쓰오일')) document.getElementById('inputGasStation').value = 'S-OIL';
+        else if (text.includes('현대')) document.getElementById('inputGasStation').value = 'HD현대오일뱅크';
+        else if (text.includes('알뜰')) document.getElementById('inputGasStation').value = '알뜰주유소';
+
+        document.getElementById('receiptNote').innerText = '✅ 영수증 항목 추출 완료';
+        updateLivePreview();
+      } catch (err) {
+        document.getElementById('receiptNote').innerText = '영수증 인식 실패. 직접 입력해주세요.';
+      } finally {
+        document.getElementById('receiptSpinner').classList.add('hidden');
+      }
+    }
+
+    function clearOdoPhoto() {
+      odoImgBase64 = null;
+      document.getElementById('odoPreview').classList.add('hidden');
+      document.getElementById('btnOdoClear').classList.add('hidden');
+      document.getElementById('odoNote').innerText = '';
+      document.getElementById('fileOdo').value = '';
+    }
+
+    function clearReceiptPhoto() {
+      receiptImgBase64 = null;
+      document.getElementById('receiptPreview').classList.add('hidden');
+      document.getElementById('btnReceiptClear').classList.add('hidden');
+      document.getElementById('receiptNote').innerText = '';
+      document.getElementById('fileReceipt').value = '';
+    }
+
+    // Save Refuel Record
+    function saveRecord() {
+      const odo = parseFloat(document.getElementById('inputOdometer').value);
+      const liters = parseFloat(document.getElementById('inputLiters').value);
+      const cost = parseFloat(document.getElementById('inputTotalCost').value);
+      const date = document.getElementById('inputDate').value || new Date().toISOString().slice(0, 16);
+      const station = document.getElementById('inputGasStation').value.trim() || '주유소';
+      const memo = document.getElementById('inputMemo').value.trim();
+
+      if (isNaN(odo) || odo <= 0) { alert('누적 주행거리를 입력해주세요.'); return; }
+      if (isNaN(liters) || liters <= 0) { alert('주유량을 입력해주세요.'); return; }
+      if (isNaN(cost) || cost <= 0) { alert('결제금액을 입력해주세요.'); return; }
+
+      const newRec = {
+        id: 'rec-' + Date.now(),
+        date,
+        odometer: odo,
+        liters: Number(liters.toFixed(2)),
+        totalCost: cost,
+        unitPrice: Math.round(cost / liters),
+        isFullTank,
+        gasStation: station,
+        memo,
+        odometerImage: odoImgBase64,
+        receiptImage: receiptImgBase64
+      };
+
+      records.push(newRec);
+      records = recalculateChain(records);
+      saveRecords();
+
+      // Reset Form
+      document.getElementById('inputOdometer').value = '';
+      document.getElementById('inputLiters').value = '';
+      document.getElementById('inputTotalCost').value = '';
+      document.getElementById('inputGasStation').value = '';
+      document.getElementById('inputMemo').value = '';
+      clearOdoPhoto();
+      clearReceiptPhoto();
+      initDefaultDate();
+
+      renderApp();
+      switchTab('dashboard');
+      showToast('주유 기록이 성공적으로 저장되었습니다! ✨');
+    }
+
+    function deleteRecord(id) {
+      if (!confirm('이 기록을 삭제하시겠습니까? 이후 기록의 연비가 자동 재계산됩니다.')) return;
+      records = records.filter(r => r.id !== id);
+      records = recalculateChain(records);
+      saveRecords();
+      renderApp();
+      showToast('기록이 삭제되었습니다.');
+    }
+
+    function resetSampleData() {
+      records = recalculateChain(sampleData);
+      saveRecords();
+      renderApp();
+      showToast('샘플 주유 기록 5건을 복원했습니다.');
+    }
+
+    function exportCsv() {
+      const headers = ['일자', '누적주행거리(km)', '구간거리(km)', '주유량(L)', '결제금액(원)', '단가(원/L)', '연비(km/L)', '주유소', '메모'];
+      const rows = records.map(r => [r.date.replace('T', ' '), r.odometer, r.tripDistance, r.liters, r.totalCost, r.unitPrice, r.fuelEfficiency ?? '-', `"${r.gasStation}"`, `"${r.memo || ''}"`]);
+      const csv = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `스마트차계부_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    }
+
+    function exportJson() {
+      const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `스마트차계부_백업_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+    }
+
+    function importJson(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target.result);
+          if (Array.isArray(parsed)) {
+            records = recalculateChain(parsed);
+            saveRecords();
+            renderApp();
+            showToast(`${parsed.length}개의 기록을 복원했습니다.`);
+          }
+        } catch { alert('올바른 백업 파일 형식이 아닙니다.'); }
+      };
+      reader.readAsText(file);
+    }
+
+    function viewPhoto(url, title) {
+      document.getElementById('photoModalImg').src = url;
+      document.getElementById('photoModalTitle').innerText = title;
+      document.getElementById('photoModal').classList.remove('hidden');
+    }
+    function closePhotoModal() { document.getElementById('photoModal').classList.add('hidden'); }
+    function openInstallGuide() { document.getElementById('installModal').classList.remove('hidden'); }
+    function closeInstallGuide() { document.getElementById('installModal').classList.add('hidden'); }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 3000);
+    }
+  </script>
+</body>
+</html>
