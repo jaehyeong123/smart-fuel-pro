@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Local binaries
+cloudflared.exe
+
+# Build artifacts (will be deployed to gh-pages branch separately)
+dist/
+dist-ssr/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
