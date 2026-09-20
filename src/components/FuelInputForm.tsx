@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Camera,
-  Upload,
   Sparkles,
   Loader2,
   CheckCircle2,
   X,
   Fuel,
-  Gauge
+  Gauge,
+  Image as ImageIcon
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 import { FuelRecord } from '../types';
@@ -56,9 +56,11 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
   // Field auto-detected badges
   const [autoFilledFields, setAutoFilledFields] = useState<Record<string, boolean>>({});
 
-  // File input refs
-  const odoInputRef = useRef<HTMLInputElement>(null);
-  const receiptInputRef = useRef<HTMLInputElement>(null);
+  // File input refs (camera & gallery separation)
+  const odoCameraRef = useRef<HTMLInputElement>(null);
+  const odoGalleryRef = useRef<HTMLInputElement>(null);
+  const receiptCameraRef = useRef<HTMLInputElement>(null);
+  const receiptGalleryRef = useRef<HTMLInputElement>(null);
 
   // Auto calculate unit price when totalCost and liters change
   useEffect(() => {
@@ -287,22 +289,42 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
               )}
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => odoInputRef.current?.click()}
-              disabled={odoOcrLoading}
-              className="aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-emerald-500 flex flex-col items-center justify-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/30 transition-colors"
-            >
-              <Camera className="w-6 h-6 text-slate-400" />
-              <span className="text-[11px] font-medium">계기판 사진</span>
-            </button>
+            <div className="aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 p-2 flex flex-col justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => odoCameraRef.current?.click()}
+                disabled={odoOcrLoading}
+                className="w-full py-2 px-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform border border-emerald-200 dark:border-emerald-800 shadow-xs"
+              >
+                <Camera className="w-4 h-4 text-emerald-600" />
+                <span>카메라 촬영</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => odoGalleryRef.current?.click()}
+                disabled={odoOcrLoading}
+                className="w-full py-2 px-2.5 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform border border-slate-200 dark:border-slate-700 shadow-xs"
+              >
+                <ImageIcon className="w-4 h-4 text-slate-500" />
+                <span>앨범에서 선택</span>
+              </button>
+            </div>
           )}
 
+          {/* Camera input (capture="environment") */}
           <input
-            ref={odoInputRef}
+            ref={odoCameraRef}
             type="file"
             accept="image/*"
             capture="environment"
+            onChange={handleOdometerImageUpload}
+            className="hidden"
+          />
+          {/* Gallery input (without capture) */}
+          <input
+            ref={odoGalleryRef}
+            type="file"
+            accept="image/*"
             onChange={handleOdometerImageUpload}
             className="hidden"
           />
@@ -319,7 +341,7 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
               <Fuel className="w-3.5 h-3.5 text-blue-600" />
-              영수증 촬영
+              영수증 사진
             </span>
             {receiptImg && (
               <button
@@ -346,22 +368,42 @@ export const FuelInputForm: React.FC<FuelInputFormProps> = ({
               )}
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => receiptInputRef.current?.click()}
-              disabled={receiptOcrLoading}
-              className="aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-blue-500 flex flex-col items-center justify-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/30 transition-colors"
-            >
-              <Upload className="w-6 h-6 text-slate-400" />
-              <span className="text-[11px] font-medium">영수증 사진</span>
-            </button>
+            <div className="aspect-[4/3] rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 p-2 flex flex-col justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => receiptCameraRef.current?.click()}
+                disabled={receiptOcrLoading}
+                className="w-full py-2 px-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform border border-blue-200 dark:border-blue-800 shadow-xs"
+              >
+                <Camera className="w-4 h-4 text-blue-600" />
+                <span>카메라 촬영</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => receiptGalleryRef.current?.click()}
+                disabled={receiptOcrLoading}
+                className="w-full py-2 px-2.5 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform border border-slate-200 dark:border-slate-700 shadow-xs"
+              >
+                <ImageIcon className="w-4 h-4 text-slate-500" />
+                <span>앨범에서 선택</span>
+              </button>
+            </div>
           )}
 
+          {/* Camera input (capture="environment") */}
           <input
-            ref={receiptInputRef}
+            ref={receiptCameraRef}
             type="file"
             accept="image/*"
             capture="environment"
+            onChange={handleReceiptImageUpload}
+            className="hidden"
+          />
+          {/* Gallery input (without capture) */}
+          <input
+            ref={receiptGalleryRef}
+            type="file"
+            accept="image/*"
             onChange={handleReceiptImageUpload}
             className="hidden"
           />

@@ -2,7 +2,7 @@ const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 
-const url = 'http://192.168.5.21:5173/';
+const url = 'https://jaehyeong123.github.io/smart-fuel-pro/';
 const publicDir = path.resolve(__dirname, '../public');
 const artifactDir = 'C:\\Users\\userpro\\.gemini\\antigravity\\brain\\2d6dcf93-3973-4a29-af28-d371d6d80432';
 

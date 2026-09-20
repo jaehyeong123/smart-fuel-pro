@@ -1,8 +1,9 @@
-import { FuelRecord, VehicleProfile } from '../types';
+import { FuelRecord, VehicleProfile, MaintenanceRecord } from '../types';
 import { recalculateRecordsChain } from './fuelCalculator';
 
 const STORAGE_KEYS = {
   RECORDS: 'smart_fuel_pro_records_v1',
+  MAINTENANCE: 'smart_fuel_pro_maintenance_v1',
   PROFILE: 'smart_fuel_pro_profile_v1',
   DARK_MODE: 'smart_fuel_pro_theme_v1'
 };
@@ -165,3 +166,63 @@ export function exportRecordsAsCsv(records: FuelRecord[]): void {
   link.click();
   link.remove();
 }
+
+export const sampleInitialMaintenance: MaintenanceRecord[] = [
+  {
+    id: 'maint-1',
+    date: '2025-01-10T11:00',
+    odometer: 45300,
+    category: 'engine_oil',
+    title: '엔진오일 및 오일필터 세트 교체',
+    cost: 85000,
+    shopName: '블루핸즈 역삼점',
+    memo: '순정 합성유 0W-20, 에어크리너 함께 교환',
+    nextDueOdometer: 55300
+  },
+  {
+    id: 'maint-2',
+    date: '2025-02-05T15:30',
+    odometer: 46600,
+    category: 'filter',
+    title: '초미세먼지 에어컨/캐빈 필터 교체',
+    cost: 28000,
+    shopName: '공임나라 서초점',
+    memo: 'PM2.5 헤파 활성탄 필터 장착',
+    nextDueOdometer: 56600
+  },
+  {
+    id: 'maint-3',
+    date: '2025-02-28T14:20',
+    odometer: 47400,
+    category: 'wiper',
+    title: '발수코팅 하이브리드 와이퍼 블레이드 교체',
+    cost: 22000,
+    shopName: '자가 교체 (다이)',
+    memo: '운전석 650mm, 조수석 450mm',
+    nextDueOdometer: 57400
+  }
+];
+
+export function loadMaintenanceFromStorage(): MaintenanceRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MAINTENANCE);
+    if (!raw) {
+      saveMaintenanceToStorage(sampleInitialMaintenance);
+      return sampleInitialMaintenance;
+    }
+    return JSON.parse(raw) as MaintenanceRecord[];
+  } catch (e) {
+    console.error('Failed to load maintenance records', e);
+    return [];
+  }
+}
+
+export function saveMaintenanceToStorage(records: MaintenanceRecord[]): void {
+  try {
+    const sorted = [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    localStorage.setItem(STORAGE_KEYS.MAINTENANCE, JSON.stringify(sorted));
+  } catch (e) {
+    console.error('Failed to save maintenance records', e);
+  }
+}
+

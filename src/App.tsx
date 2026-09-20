@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FuelRecord, VehicleProfile, ActiveTab } from './types';
+import { FuelRecord, VehicleProfile, ActiveTab, MaintenanceRecord } from './types';
 import {
   loadRecordsFromStorage,
   saveRecordsToStorage,
+  loadMaintenanceFromStorage,
+  saveMaintenanceToStorage,
   loadProfileFromStorage,
   saveProfileToStorage,
   sampleInitialRecords,
@@ -13,11 +15,13 @@ import { BottomNav } from './components/BottomNav';
 import { DashboardView } from './components/DashboardView';
 import { FuelInputForm } from './components/FuelInputForm';
 import { HistoryView } from './components/HistoryView';
+import { MaintenanceView } from './components/MaintenanceView';
 import { InstallModal } from './components/InstallModal';
 
 export const App: React.FC = () => {
   // Main state
   const [records, setRecords] = useState<FuelRecord[]>(() => loadRecordsFromStorage());
+  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(() => loadMaintenanceFromStorage());
   const [profile, setProfile] = useState<VehicleProfile>(() => loadProfileFromStorage());
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
 
@@ -136,6 +140,30 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 2500);
   };
 
+  // Handle Save Maintenance Record
+  const handleSaveMaintenanceRecord = (
+    newMaintData: Omit<MaintenanceRecord, 'id'>
+  ) => {
+    const newRecord: MaintenanceRecord = {
+      ...newMaintData,
+      id: 'maint-' + Date.now(),
+    };
+    const updated = [newRecord, ...maintenanceRecords];
+    saveMaintenanceToStorage(updated);
+    setMaintenanceRecords(loadMaintenanceFromStorage());
+    setToastMessage('정비 기록이 안전하게 저장되었습니다! 🔧');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Handle Delete Maintenance Record
+  const handleDeleteMaintenanceRecord = (id: string) => {
+    const filtered = maintenanceRecords.filter((r) => r.id !== id);
+    saveMaintenanceToStorage(filtered);
+    setMaintenanceRecords(loadMaintenanceFromStorage());
+    setToastMessage('정비 기록이 삭제되었습니다.');
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200">
       {/* Top Mobile Header */}
@@ -177,6 +205,15 @@ export const App: React.FC = () => {
           />
         )}
 
+        {activeTab === 'maintenance' && (
+          <MaintenanceView
+            records={maintenanceRecords}
+            currentOdometer={lastRecord?.odometer || 0}
+            onSaveRecord={handleSaveMaintenanceRecord}
+            onDeleteRecord={handleDeleteMaintenanceRecord}
+          />
+        )}
+
         {activeTab === 'history' && (
           <HistoryView
             records={records}
@@ -192,6 +229,7 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onChangeTab={setActiveTab}
         recordCount={records.length}
+        maintenanceCount={maintenanceRecords.length}
       />
 
       {/* App Install / Vehicle Settings Modal */}
